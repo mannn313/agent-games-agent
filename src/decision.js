@@ -26,6 +26,7 @@
 const TASK_TYPE = 'agent-games.proof-gatekeeper.v1';
 
 const REASONS = {
+  ALL_CHECKS_PASSED: 'all checks passed',
   VK_SUBSTITUTION: 'proof_vk does not match registered_vk',
   EXPIRED: 'current_block >= expiry_block',
   INSUFFICIENT_BALANCE: 'public_balance < minimum',
@@ -107,7 +108,10 @@ function decide(task, { replayCache, nowMs = Date.now() }) {
     return { decision: 'REJECT', reason_code: 'STALE_TASK', proofMode: 'none', failedChecks: ['STALE_TASK'] };
   }
 
-  return { decision: 'APPROVE', reason_code: null, proofMode: 'true-inputs', failedChecks: [] };
+  // reason_code must ALWAYS be a string: the platform's protocol-v1 schema
+  // rejects null (practice dispatch 2026-11-15: "reason_code: Invalid input:
+  // expected string, received null" on a valid APPROVE task).
+  return { decision: 'APPROVE', reason_code: 'ALL_CHECKS_PASSED', proofMode: 'true-inputs', failedChecks: [] };
 }
 
 module.exports = { TASK_TYPE, REASONS, decide, parseBig, parseAddress, parseDeadline };

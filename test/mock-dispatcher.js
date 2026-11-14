@@ -126,13 +126,16 @@ async function main() {
     const vk = await getVk(circuit);
     const verifyProof = (proof, sigs) => snarkjs.groth16.verify(vk, sigs, proof);
     const roundTrips = [];
+    const taskBodies = [];
 
     async function sendTask(task) {
       const t0 = Date.now();
       const res = await post(task);
       const ms = Date.now() - t0;
       roundTrips.push(ms);
-      return { res, body: JSON.parse(res.raw.toString('utf8')), ms };
+      const body = JSON.parse(res.raw.toString('utf8'));
+      taskBodies.push(body);
+      return { res, body, ms };
     }
 
     // 1. Preflight
@@ -142,7 +145,7 @@ async function main() {
 
     // 2. Valid task -> APPROVE + verifying proof
     const t1 = await sendTask(makeTask());
-    check('valid -> APPROVE', t1.body.decision === 'APPROVE' && t1.body.reason_code === null, `${t1.ms}ms`);
+    check('valid -> APPROVE', t1.body.decision === 'APPROVE' && t1.body.reason_code === 'ALL_CHECKS_PASSED', `${t1.ms}ms`);
     check('valid proof verifies', t1.body.proof && await verifyProof(t1.body.proof, t1.body.public_signals));
     check('valid signals: decision=1, taskId encoded',
       t1.body.public_signals[11] === '1'
@@ -196,6 +199,12 @@ async function main() {
     check('bad signature -> 401', bu.status === 401);
     const ns = await post(makeTask(), { sign: false });
     check('missing signature -> 401', ns.status === 401);
+
+    // 12b. Protocol-v1 schema: reason_code is a non-empty string on EVERY
+    // task response (platform rejects null — practice failure 2026-11-15).
+    check('schema: reason_code string on all task responses',
+      taskBodies.length > 0 && taskBodies.every((b) => typeof b.reason_code === 'string' && b.reason_code.length > 0),
+      `${taskBodies.length} responses`);
 
     // 13. Direct proving p50 (clean, no HTTP): 5 proves of a valid task.
     const directTimes = [];
