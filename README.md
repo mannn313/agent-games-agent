@@ -24,10 +24,13 @@ Before writing the agent, I read the published circuits instead of trusting
 the docs. Using the circom witness calculator's FNV-hash signal oracle, I
 recovered the full input schema of both circuits empirically:
 
-- **Gatekeeper:** 13 inputs, ALL public, zero private. Signals:
+- **Gatekeeper:** 13 inputs — 12 public + 1 private (`salt`) — plus 1 public
+  output (commitment over salt/taskId). Signals:
   `registeredVkHash, proofVkHash, minimum, publicBalance, expiryBlock,
   currentBlock, recipient, conditionRecipient, amount, maxTransfer, decision,
-  taskId, salt`. No `proof_tx` signal — reuse/finality checks are agent-side.
+  taskId, salt`. The circuit asserts decision/check consistency, so a
+  decision is only provable when it matches the circuit's own 5 checks.
+  No `proof_tx` signal — reuse/finality checks are agent-side.
 - **VFY policy:** 17 inputs — 9 public, 8 private. Public signals:
   `commitment, matchId, turnNumber, selfBalance, opponentBalance, action,
   amount, circuitVersion, salt`. The private strategy inputs and the
@@ -43,29 +46,41 @@ of the analysis is also the project's Creator Track article:
 - [x] Circuit input schemas recovered empirically
 - [x] Registered on Agent Games as @johncalta
 - [x] Creator Track entry submitted (article, pending manual review)
-- [ ] Agent registration (HMAC secret) — in progress
-- [ ] Endpoint live + practice mode verified
+- [x] Agent MANSKUY-1 registered (Proof Gatekeeper; Steal entries locked)
+- [x] Gatekeeper endpoint built + tested locally (18/18 mock checks)
+- [ ] Endpoint deployed to public HTTPS + practice mode verified
 - [ ] Gatekeeper scored rounds R03–R08 (daily 17:30–03:30 WIB)
-- [ ] Steal the VFY Swiss rounds (if entry still open)
 
-## Layout (planned)
+## Layout
 
 ```
 src/
-  server.ts        # HTTPS endpoint: HMAC verify -> decide -> prove -> respond
-  gatekeeper.ts    # deterministic Gatekeeper decision checks
-  prover.ts        # snarkjs proof generation (gatekeeper + vfy-policy)
-  steal.ts         # Steal the VFY strategy + move proofs
+  server.js        # HTTPS endpoint: HMAC verify -> decide -> prove -> respond
+  decision.js      # deterministic Gatekeeper decision checks (fail closed)
+  prover.js        # snarkjs proof generation + local self-verification
+  encodings.js     # value-encoding assumptions (single place to change)
+  hmac.js          # request/response HMAC-SHA256 signing
+  replay.js        # proof_tx replay cache (24h TTL)
+  keccak.js        # vendored keccak256
+scripts/
+  fetch-circuits.js  # prestart: download wasm/zkey from platform endpoints
+test/
+  mock-dispatcher.js # 18-check local harness (preflight, traps, signatures)
+  probe-circuit.js   # re-derives the circuit semantics empirically
 docs/
   circuit-findings.md
+  gatekeeper-endpoint.md   # endpoint design, trap coverage, deploy notes
 ```
 
-## Run (planned)
+Endpoint details: [docs/gatekeeper-endpoint.md](docs/gatekeeper-endpoint.md).
+
+## Run
 
 ```sh
 npm install
-AGENT_GAMES_HMAC_SECRET=... npm start
+AGENT_GAMES_HMAC_SECRET=... npm start   # prestart fetches circuit artifacts
 ```
 
-Proving keys and WASM artifacts are downloaded from the platform's public
-circuit endpoints at deploy time; they are not committed to this repo.
+`AGENT_GAMES_HMAC_SECRET` comes from the host's secret store, never from
+code or chat. Proving keys and WASM artifacts are downloaded from the
+platform's public circuit endpoints at start; they are not committed.

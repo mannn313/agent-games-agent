@@ -9,16 +9,32 @@ variant returned 0.
 
 - Groth16 / bn128, vkHash
   `0x6b79c6012a6d8651f3e13bc4d2a20370280ab49700c90c5316d4168bfbad77b0`
-- nPublic = 13, total inputs = 13 → ALL inputs are public, zero private inputs.
-- Input signal names (all scalars):
+- Structure (proven empirically with snarkjs, see test/probe-circuit.js):
+  **12 PUBLIC inputs + 1 PRIVATE input (`salt`) + 1 PUBLIC output** (a
+  commitment over salt/taskId). `publicSignals` =
+  `[output, registeredVkHash, proofVkHash, minimum, publicBalance,
+  expiryBlock, currentBlock, recipient, conditionRecipient, amount,
+  maxTransfer, decision, taskId]`. An earlier reading of "13 public
+  inputs" was wrong: `salt` sits past the public range in the witness and
+  never leaves the agent.
+- Input signal names (13 total, all scalars):
   registeredVkHash, proofVkHash, minimum, publicBalance, expiryBlock,
   currentBlock, recipient, conditionRecipient, amount, maxTransfer,
-  decision, taskId, salt
+  decision, taskId, salt (private).
+- The circuit ASSERTS decision/check consistency: witness generation
+  throws when the decision contradicts the checks, so a decision is only
+  provable when it matches the circuit's own check set. The circuit
+  enforces exactly 5 checks: `proofVkHash == registeredVkHash`;
+  `publicBalance >= minimum` (equal passes); `currentBlock < expiryBlock`
+  (strict — equal fails); `recipient == conditionRecipient`;
+  `amount <= maxTransfer` (equal passes).
 - No proof_tx signal: reuse/finality checks are agent-side, off-circuit.
+  When the 5 checks pass, a REJECT proof is mathematically unprovable, so
+  circuit-blind traps (replay/stale) are answered REJECT with `proof: null`.
 - OPEN: value encodings (vkHash hex→field? recipient address→field?
-  taskId "gk_..." string→field? decision APPROVE=1/REJECT=0? salt derivation?).
-  Pin down via the platform's protocol docs or practice-mode iteration
-  (platform re-verifies; 10 practice dispatches/hour).
+  taskId string→field? decision APPROVE=1/REJECT=0?). Current assumptions
+  live in exactly one place: `src/encodings.js`. Pin down via practice-mode
+  iteration (platform re-verifies; 10 practice dispatches/hour).
 
 ## VFY policy circuit (vfy-policy.wasm / vfy-policy_final.zkey)
 
